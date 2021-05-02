@@ -4,8 +4,8 @@ extern crate bit_vec;
 extern crate byteorder;
 
 use bit_vec::BitVec;
-use byteorder::{BigEndian, ReadBytesExt};
-use std::io::{Error, ErrorKind, Read, Seek};
+use byteorder::{LittleEndian, BigEndian, ReadBytesExt, WriteBytesExt};
+use std::io::{self, Error, ErrorKind, Read, Seek, Write};
 
 /// Parses an LZSS header and data block returning the decompressed result
 ///
@@ -137,10 +137,37 @@ fn decompress_lzss11<T: Read + Seek>(data: &mut T, size: usize) -> Result<Vec<u8
     }
 }
 
+pub fn lazy_encode_lzss11<W: Write>(data: &[u8], writer: &mut W) -> io::Result<()> {
+    // writer header [11 xx xx xx] where xx is 24-bit little endian size
+    writer.write_u8(0x11)?;
+    writer.write_u24::<LittleEndian>(data.len() as _)?;
+
+    for chunk in data.chunks(8) {
+        // no backreferences in this chunk
+        writer.write_u8(0)?;
+
+        // write uncompressed chunk
+        writer.write(chunk)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[test]
+    fn round_trip() {
+        const DATA: &[u8] = b"this is a test of the compressor round-trip";
+        let mut compressed = Vec::new();
+        lazy_encode_lzss11(DATA, &mut compressed).unwrap();
+
+        assert_eq!(
+            &decompress(&mut Cursor::new(compressed)).unwrap(),
+            DATA
+        );
+    }
 
     #[test]
     fn decompresses() {
