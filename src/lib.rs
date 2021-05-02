@@ -6,7 +6,6 @@ extern crate byteorder;
 use bit_vec::BitVec;
 use byteorder::{BigEndian, ReadBytesExt};
 use std::io::{Error, ErrorKind, Read, Seek};
-use std::mem::transmute;
 
 /// Parses an LZSS header and data block returning the decompressed result
 ///
@@ -85,20 +84,23 @@ fn decompress_lzss11<T: Read + Seek>(data: &mut T, size: usize) -> Result<Vec<u8
             if bit {
                 let mut val = data.read_u8()?;
                 let indicator = val >> 4;
-                let mut count: u16;
+                let mut count: u32;
                 match indicator {
                     0 => {
-                        count = u16::from(val) << 4;
+                        count = u32::from(val) << 4;
                         val = data.read_u8()?;
-                        count += u16::from(val) >> 4;
+                        count += u32::from(val) >> 4;
                         count += 0x11
                     }
                     1 => {
-                        count = (u16::from(val) & 0xF) << 12;
+                        count = (u32::from(val) & 0xF) << 12;
+
                         val = data.read_u8()?;
-                        count += u16::from(val) << 4;
+                        count += u32::from(val) << 4;
+
                         val = data.read_u8()?;
-                        count += u16::from(val) >> 4;
+                        count += u32::from(val) >> 4;
+
                         count += 0x111;
                     }
                     _ => {
